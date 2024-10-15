@@ -1,0 +1,106 @@
+ID;Description
+EGO_01;Scroll hand towards right
+EGO_02;Scroll hand towards left
+EGO_03;Scroll hand downward
+EGO_04;Scroll hand upward
+EGO_05;Scroll hand forward
+EGO_06;Scroll hand backward
+EGO_07;Cross index fingers
+EGO_08;Zoom in with fists
+EGO_09;Zoom out with fists
+EGO_10;Rotate fists clockwise
+EGO_11;Rotate fists counter-clockwise
+EGO_12;Zoom in with fingers
+EGO_13;Zoom out with fingers
+EGO_14;Rotate fingers clockwise
+EGO_15;Rotate fingers counter-clockwise
+EGO_16;Click with index finger
+EGO_17;Sweep diagonal
+EGO_18;Sweep circle
+EGO_19;Sweep cross
+EGO_20;Sweep checkmark
+EGO_21;Static fist
+EGO_22;Measure distance
+EGO_23;Photoframe
+EGO_24;Pause
+EGO_25;Shape C
+EGO_26;Make a phone call
+EGO_27;Wave hand
+EGO_28;OK
+EGO_29;Move fingers forward
+EGO_30;Wave finger
+EGO_31;Knock
+EGO_32;Beckon
+EGO_33;Palm to fist
+EGO_34;Fist to palm
+EGO_35;Trigger with thumb
+EGO_36;Trigger with index finger
+EGO_37;Hold fist in the other hand
+EGO_38;Grasp
+EGO_39;Walk
+EGO_40;Gather fingers
+EGO_41;Snap fingers
+EGO_42;Applaud
+EGO_43;Dual hands heart
+EGO_44;Put two fingers together
+EGO_45;Take two fingers apart
+EGO_46;Turn over
+EGO_47;Move fist upward
+EGO_48;Move fist downward
+EGO_49;Move fist towards left
+EGO_50;Move fist towards right
+EGO_51;Bring hand close
+EGO_52;Push away
+EGO_53;Thumb upward
+EGO_54;Thumb downward
+EGO_55;Thumb towards left
+EGO_56;Thumb towards right
+EGO_57;Thumb backward
+EGO_58;Thumb forward
+EGO_59;Move hand upward
+EGO_60;Move hand downward
+EGO_61;Move hand towards left
+EGO_62;Move hand towards right
+EGO_63;Draw circle with hand on horizontal surface
+EGO_64;Bent number 2
+EGO_65;Bent another number 3
+EGO_66;Dual fingers heart
+EGO_67;Scroll fingers towards left
+EGO_68;Scroll fingers towards right
+EGO_69;Move fingers upwards
+EGO_70;Move fingers downwards
+EGO_71;Move fingers towards left
+EGO_72;Move fingers towards right
+ETC_01;Cross with both hands
+ETC_02;The dog call
+ETC_03;Box with both hands
+ETC_04;Tossing a ball
+ETC_05;Trowing a ball
+ETC_06;Twisting a towel
+ETC_07;Scissor Cutting
+ETC_08;Shooting gun (Upwards Seven)
+ETC_09;Pushing outwards two hand
+ETC_10;Two hand form a triangle
+ETC_11;Tearing a paper
+ETC_12;Opening a bottle cap
+ETC_13;Wave Goodbye
+ETC_14;Butterfly movement
+ETC_15;Pinch in
+ETC_16;Pinch out
+ETC_17;Rock Hand Sign
+ETC_18;Double Thumbs Up
+NUM_00;Number 0
+NUM_01;Number 1
+NUM_02;Number 2
+NUM_03;Number 3
+NUM_04;Number 4
+NUM_05;Number 5
+NUM_06;Number 6 (in Chinese culture)
+NUM_07;Number 7 (in Chinese culture)
+NUM_08;Number 8 (in Chinese culture)
+NUM_09;Number 9 (in Chinese culture)
+NUM_10;Number 10 (in Chinese culture)
+NUM_11;Number 6 with two hands
+NUM_12;Number 7 with two hands
+NUM_13;Number 8 with two hands
+NUM_14;Number 9 with two hands
