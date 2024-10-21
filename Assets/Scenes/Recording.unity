@@ -1256,9 +1256,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d13211cb140d4aa418647dbb9c5b9702, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  delayBetweenFrames: 0.04
-  targetRawImage: {fileID: 1914348326}
-  scrn: {fileID: 42035570}
 --- !u!1 &1311173292
 GameObject:
   m_ObjectHideFlags: 0
@@ -1273,6 +1270,7 @@ GameObject:
   - component: {fileID: 1311173294}
   - component: {fileID: 1311173293}
   - component: {fileID: 1311173298}
+  - component: {fileID: 1311173299}
   m_Layer: 5
   m_Name: Canvas
   m_TagString: Untagged
@@ -1392,6 +1390,21 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   img: {fileID: 1914348326}
+--- !u!114 &1311173299
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1311173292}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b727d6abcb6c23d4da21ba6de9de5515, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  delayBetweenFrames: 0.04
+  targetRawImage: {fileID: 1914348326}
+  scrn: {fileID: 42035570}
 --- !u!1 &1402588715
 GameObject:
   m_ObjectHideFlags: 0
@@ -1578,7 +1591,19 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 1407069930}
   m_OnClick:
     m_PersistentCalls:
-      m_Calls: []
+      m_Calls:
+      - m_Target: {fileID: 1311173299}
+        m_TargetAssemblyTypeName: recScene, Assembly-CSharp
+        m_MethodName: ExitBtn
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
 --- !u!114 &1407069930
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1854,7 +1879,7 @@ GameObject:
   - component: {fileID: 2076963965}
   - component: {fileID: 2076963964}
   m_Layer: 5
-  m_Name: next_btn
+  m_Name: save_next_btn
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1924,10 +1949,10 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1311173293}
-        m_TargetAssemblyTypeName: changeScene, Assembly-CSharp
-        m_MethodName: loadScene
-        m_Mode: 5
+      - m_Target: {fileID: 1311173299}
+        m_TargetAssemblyTypeName: recScene, Assembly-CSharp
+        m_MethodName: SaveNext
+        m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
           m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine

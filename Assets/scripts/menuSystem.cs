@@ -7,6 +7,7 @@ using UnityEngine.UI;
 using TMPro;
 using UnityEngine.EventSystems;
 using UnityEngine.Video;
+using UnityEngine.SceneManagement;
 
 public class menuSystem : MonoBehaviour
 {
@@ -15,7 +16,7 @@ public class menuSystem : MonoBehaviour
     private string videoDirectoryPath;
     private List<string> allMp4Files = new List<string>();
     //private Queue<string> shuffledQueue = new Queue<string>();
-    private List<string> randomMp4Files = new List<string>();
+    //private List<string> randomMp4Files = new List<string>();
     private string displayedGesture;
     private TextMeshProUGUI descText;
     private int gestureIndex;
@@ -33,7 +34,7 @@ public class menuSystem : MonoBehaviour
 
     // Preview Image Layout
     private string imagePreviewType = "0.6x_5FRAME";
-    private string imageDirectoryPath;
+    //private string imageDirectoryPath;
     private Transform[] layoutPanels = new Transform[5];
     private Image[,] previewImages = new Image[5, 5];
 
@@ -41,7 +42,7 @@ public class menuSystem : MonoBehaviour
     void Start()
     {
         videoDirectoryPath = Path.Combine(directoryPath, previewType);
-        imageDirectoryPath = Path.Combine(directoryPath, imagePreviewType);
+        MainManager.Instance.imageDirectoryPath = Path.Combine(directoryPath, imagePreviewType);
         videoPlayer = GameObject.Find("GesturePreviewPlayer").GetComponent<VideoPlayer>();
 
         // Fetch MP4 file names from the directory
@@ -54,10 +55,10 @@ public class menuSystem : MonoBehaviour
         SelectRandomMp4Files();
 
         // Debug the selected random files
-        if (randomMp4Files.Count != 0)
+        if (MainManager.Instance.randomMp4Files.Count != 0)
         {
-            displayedGesture = randomMp4Files[0];
-            foreach (string file in randomMp4Files)
+            displayedGesture = MainManager.Instance.randomMp4Files[0];
+            foreach (string file in MainManager.Instance.randomMp4Files)
             {
                 Debug.Log("Selected MP4 file: " + file);
             }
@@ -128,12 +129,12 @@ public class menuSystem : MonoBehaviour
         int numberOfFilesToSelect = Mathf.Min(5, MainManager.Instance.shuffledQueue.Count);
 
         // Dequeue 5 files from the shuffled queue
-        randomMp4Files = new List<string>();
+        MainManager.Instance.randomMp4Files = new List<string>();
         for (int i = 0; i < numberOfFilesToSelect; i++)
         {
             if (MainManager.Instance.shuffledQueue.Count > 0)
             {
-                randomMp4Files.Add(Path.GetFileNameWithoutExtension(MainManager.Instance.shuffledQueue.Dequeue()));
+                MainManager.Instance.randomMp4Files.Add(Path.GetFileNameWithoutExtension(MainManager.Instance.shuffledQueue.Dequeue()));
             }
         }
     }
@@ -195,7 +196,7 @@ public class menuSystem : MonoBehaviour
             {
                 previewImages[i, j] = layoutPanels[index].GetChild(j).GetComponent<Image>();
 
-                string imagePath = Path.Combine(imageDirectoryPath, randomMp4Files[i] + "_frame_" + (j+1) + ".png");
+                string imagePath = Path.Combine(MainManager.Instance.imageDirectoryPath, MainManager.Instance.randomMp4Files[i] + "_frame_" + (j+1) + ".png");
                 if (File.Exists(imagePath))
                 {
                     // Load the image into a Texture2D
@@ -252,21 +253,29 @@ public class menuSystem : MonoBehaviour
 
     void updateText()
     {
-        if (gestureData.ContainsKey(randomMp4Files[gestureIndex]))
+        string GestID = MainManager.Instance.randomMp4Files[gestureIndex];
+        string numID;
+        if (GestID.StartsWith("EGO")) numID = "0";
+        else if (GestID.StartsWith("ETC")) numID = "1";
+        else if (GestID.StartsWith("NUM")) numID = "2";
+        else numID = "3";
+        numID += GestID.Split('_')[1];
+
+        if (gestureData.ContainsKey(GestID))
         {
-            descText.text = randomMp4Files[gestureIndex] + " : " + gestureData[randomMp4Files[gestureIndex]];
+            descText.text = numID + "(" + GestID + ") : " + gestureData[GestID];
         }
         else
         {
-            Debug.LogWarning("ID not found in CSV data.");
-            descText.text = "ID not found in CSV data.";
+            Debug.LogWarning(GestID + " : ID not found in CSV data.");
+            descText.text = GestID + " : ID not found in CSV data.";
         }
     }
 
     void PlayVideo()
     {
         // Set the video clip to the selected video file
-        string videoPath = Path.Combine(videoDirectoryPath, randomMp4Files[gestureIndex] + ".mp4");
+        string videoPath = Path.Combine(videoDirectoryPath, MainManager.Instance.randomMp4Files[gestureIndex] + ".mp4");
         videoPlayer.url = videoPath;
 
         // Play the video
@@ -287,4 +296,8 @@ public class menuSystem : MonoBehaviour
         }
     }
 
+    public void loadRecording()
+    {
+        SceneManager.LoadScene("Recording");
+    }
 }
