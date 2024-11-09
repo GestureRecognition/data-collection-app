@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      EGO_49_frame_2_0: 4555428587043017169
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

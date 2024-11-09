@@ -1,13 +1,19 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using System.IO;  // For accessing file directories
-using System.Linq;  // For selecting random elements from a list
+using System.IO;
+using System.Linq;
 using UnityEngine.UI;
 using TMPro;
 using UnityEngine.EventSystems;
 using UnityEngine.Video;
 using UnityEngine.SceneManagement;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading.Tasks;
+using System;
+using System.Reflection;
 
 public class menuSystem : MonoBehaviour
 {
@@ -15,46 +21,44 @@ public class menuSystem : MonoBehaviour
     private string previewType = "0.6x";
     private string videoDirectoryPath;
     private List<string> allMp4Files = new List<string>();
-    //private Queue<string> shuffledQueue = new Queue<string>();
-    //private List<string> randomMp4Files = new List<string>();
     private string displayedGesture;
     private TextMeshProUGUI descText;
     private int gestureIndex;
 
-    // for reading csv
     private string GestDescFilename = "GestureDescription.csv";
     private Dictionary<string, string> gestureData = new Dictionary<string, string>();
 
-    // Button references
     private Button[] gestureButtons = new Button[5];
     private Button lastSelectedButton;
 
-    // Video Player reference
     private VideoPlayer videoPlayer;
 
-    // Preview Image Layout
     private string imagePreviewType = "0.6x_5FRAME";
-    //private string imageDirectoryPath;
     private Transform[] layoutPanels = new Transform[5];
     private Image[,] previewImages = new Image[5, 5];
 
-    // Start is called before the first frame update
+    // UDP server address and port
+    private string serverIP = "127.0.0.1";
+    private int serverPort = 9000;
+
+    private bool glassesConnected = true;
+    private string recordingDevice = "Camera";
+    private bool saveAt = true;
+    private Button recDeviceBtn;
+    private Button recSaveAtBtn;
+    private Button refreshButton;
+    private TextMeshProUGUI refreshButton_text;
+
     void Start()
     {
         videoDirectoryPath = Path.Combine(directoryPath, previewType);
         MainManager.Instance.imageDirectoryPath = Path.Combine(directoryPath, imagePreviewType);
         videoPlayer = GameObject.Find("GesturePreviewPlayer").GetComponent<VideoPlayer>();
 
-        // Fetch MP4 file names from the directory
         FetchMp4Files();
-
-        // Shuffle files and fill the queue
         while (MainManager.Instance.shuffledQueue.Count < 5) ShuffleAndFillQueue();
-
-        // Select 5 random MP4 file names from the queue
         SelectRandomMp4Files();
 
-        // Debug the selected random files
         if (MainManager.Instance.randomMp4Files.Count != 0)
         {
             displayedGesture = MainManager.Instance.randomMp4Files[0];
@@ -74,21 +78,70 @@ public class menuSystem : MonoBehaviour
         if (gestureButtons.Length > 0) gestureButtons[0].Select();
         lastSelectedButton = gestureButtons[0];
 
+        recDeviceBtn = GameObject.Find("btn_recdev").GetComponent<Button>();
+        recSaveAtBtn = GameObject.Find("btn_saveat").GetComponent<Button>();
+        refreshButton = GameObject.Find("btn_refresh").GetComponent<Button>();
+        refreshButton_text = GameObject.Find("refresh_text").GetComponent<TextMeshProUGUI>();
+        refreshButton_text.color = Color.red;
+
+        //recDeviceBtn.interactable = false;
+        //recSaveAtBtn.gameObject.SetActive(false);
+
         SetupTransformPanels();
-
-
         PlayVideo();
     }
 
-    // Fetch all MP4 files in the specified directory and store them in allMp4Files list
+    async void SendGlassesStatusRequest()
+    {
+        using (UdpClient client = new UdpClient())
+        {
+            client.Connect(serverIP, serverPort);
+            byte[] data = Encoding.UTF8.GetBytes("GlassesStatus");
+
+            try
+            {
+                await client.SendAsync(data, data.Length);
+
+                // Wait for the response with a timeout
+                Task<UdpReceiveResult> receiveTask = client.ReceiveAsync();
+                if (await Task.WhenAny(receiveTask, Task.Delay(5000)) == receiveTask)
+                {
+                    string response = Encoding.UTF8.GetString(receiveTask.Result.Buffer);
+                    Debug.Log("Response received: " + response);
+
+                    if (response == "GlassesConnected")
+                    {
+                        recDeviceBtn.interactable = true;
+                        refreshButton_text.color = Color.green;
+                        Debug.Log("Glasses Connected");
+                    }
+                    else
+                    {
+                        recDeviceBtn.interactable = false;
+                        //recDeviceBtn.GetComponentInChildren<TextMeshPro>().text = "Camera";
+                        refreshButton_text.color = Color.red;
+                        Debug.Log("Glasses Not Connected");
+                    }
+                }
+                else
+                {
+                    Debug.LogError("Server response timed out");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("Error while sending or receiving UDP message: " + ex.Message);
+            }
+        }
+    }
+
+
+
     void FetchMp4Files()
     {
         if (Directory.Exists(videoDirectoryPath))
         {
-            // Get all MP4 files in the directory
             string[] mp4Files = Directory.GetFiles(videoDirectoryPath, "*.mp4");
-
-            // Add file names (without path) to the allMp4Files list
             foreach (string filePath in mp4Files)
             {
                 allMp4Files.Add(Path.GetFileName(filePath));
@@ -102,13 +155,9 @@ public class menuSystem : MonoBehaviour
         }
     }
 
-    // Shuffle the allMp4Files and fill the queue
     void ShuffleAndFillQueue()
     {
-        // Shuffle the list
         List<string> shuffledList = allMp4Files.OrderBy(x => UnityEngine.Random.value).ToList();
-
-        // Clear existing queue and enqueue all shuffled files into the queue
         MainManager.Instance.shuffledQueue.Clear();
         foreach (string file in shuffledList)
         {
@@ -116,19 +165,14 @@ public class menuSystem : MonoBehaviour
         }
     }
 
-    // Select 5 random MP4 file names from the queue
     void SelectRandomMp4Files()
     {
-        // If the queue has fewer than 5 files, reshuffle and refill it
         while (MainManager.Instance.shuffledQueue.Count < 5)
         {
             ShuffleAndFillQueue();
         }
 
-        // Ensure we don't try to select more than what's available
         int numberOfFilesToSelect = Mathf.Min(5, MainManager.Instance.shuffledQueue.Count);
-
-        // Dequeue 5 files from the shuffled queue
         MainManager.Instance.randomMp4Files = new List<string>();
         for (int i = 0; i < numberOfFilesToSelect; i++)
         {
@@ -144,25 +188,19 @@ public class menuSystem : MonoBehaviour
         string filePath = Path.Combine(directoryPath, GestDescFilename);
         if (File.Exists(filePath))
         {
-            string[] csvLines = File.ReadAllLines(filePath); // Read all lines from CSV file
+            string[] csvLines = File.ReadAllLines(filePath);
 
             foreach (string line in csvLines)
             {
-                // Skip empty lines or headers if needed
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
+                if (string.IsNullOrWhiteSpace(line)) continue;
 
-                // Split the line into components by semicolon
                 string[] values = line.Split(';');
 
-                // Skip the first line
                 if (values[0] == "ID") continue;
 
-                // Assuming first value is ID and second is Description
-                string id = values[0];  // Convert first column to integer (ID)
-                string description = values[1]; // Second column is Description
+                string id = values[0];
+                string description = values[1];
 
-                // Add the ID and Description to the dictionary
                 gestureData.Add(id, description);
             }
 
@@ -174,36 +212,32 @@ public class menuSystem : MonoBehaviour
         }
     }
 
-    // Function to set up the onClick events for the buttons
     void SetupGestureButtons()
     {
         for (int i = 0; i < gestureButtons.Length; i++)
         {
-            int index = i; // Local copy for the closure issue
+            int index = i;
             gestureButtons[index] = GameObject.Find("Gesture_" + index).GetComponent<Button>();
             gestureButtons[index].onClick.AddListener(() => OnGestureButtonClick(index));
         }
     }
 
-    // Function to set up the preview display layout panels
     void SetupTransformPanels()
     {
         for (int i = 0; i < layoutPanels.Length; i++)
         {
-            int index = i; // Local copy for the closure issue
+            int index = i;
             layoutPanels[index] = GameObject.Find("LayoutPanel_" + index).GetComponent<Transform>();
             for (int j = 0; j < layoutPanels[index].childCount; j++)
             {
                 previewImages[i, j] = layoutPanels[index].GetChild(j).GetComponent<Image>();
 
-                string imagePath = Path.Combine(MainManager.Instance.imageDirectoryPath, MainManager.Instance.randomMp4Files[i] + "_frame_" + (j+1) + ".png");
+                string imagePath = Path.Combine(MainManager.Instance.imageDirectoryPath, MainManager.Instance.randomMp4Files[i] + "_frame_" + (j + 1) + ".png");
                 if (File.Exists(imagePath))
                 {
-                    // Load the image into a Texture2D
                     byte[] imageBytes = File.ReadAllBytes(imagePath);
                     Texture2D texture = new Texture2D(2, 2);
                     texture.LoadImage(imageBytes);
-                    // Convert the Texture2D into a Sprite
                     Sprite tempSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
                     previewImages[i, j].sprite = tempSprite;
                 }
@@ -215,7 +249,6 @@ public class menuSystem : MonoBehaviour
         }
     }
 
-    // This function is called when a button is clicked
     void OnGestureButtonClick(int buttonIndex)
     {
         gestureIndex = buttonIndex;
@@ -274,21 +307,16 @@ public class menuSystem : MonoBehaviour
 
     void PlayVideo()
     {
-        // Set the video clip to the selected video file
         string videoPath = Path.Combine(videoDirectoryPath, MainManager.Instance.randomMp4Files[gestureIndex] + ".mp4");
         videoPlayer.url = videoPath;
-
-        // Play the video
         videoPlayer.Play();
         Debug.Log("Playing video: " + videoPath);
     }
 
-    // Update is called once per frame
     void Update()
     {
         if (EventSystem.current.currentSelectedGameObject == null)
         {
-            // Re-select the last selected button
             if (lastSelectedButton != null)
             {
                 lastSelectedButton.Select();
@@ -300,4 +328,13 @@ public class menuSystem : MonoBehaviour
     {
         SceneManager.LoadScene("Recording");
     }
+
+    // Call this function to send a status request
+    public void CheckGlassesStatus()
+    {
+        SendGlassesStatusRequest();
+        lastSelectedButton = gestureButtons[gestureIndex];
+    }
+
+
 }

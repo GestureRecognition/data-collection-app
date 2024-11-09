@@ -271,7 +271,7 @@ public class recScene : MonoBehaviour
     {
         // Save the individual frames
         SaveFramesAsImages();
-
+        /*
         string videoName = string.Join("-", MainManager.Instance.randomMp4Files);
         string videoPath = Application.persistentDataPath + "/Output/" + videoName + " " + DateTime.Now.ToString("yyyy-MM-dd-HHmmss") + ".mp4";
         //string videoPath = "./Output/" + videoName + " " + DateTime.Now.ToString("yyyy-MM-dd-HHmmss") + ".mp4";
@@ -309,7 +309,7 @@ public class recScene : MonoBehaviour
         {
             Debug.LogError($"FFmpeg error: {ffmpegOutput}");
         }
-
+        */
         ClearSavedFrameImages();
 
         SceneManager.LoadScene("Main");
