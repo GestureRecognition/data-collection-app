@@ -211,12 +211,13 @@ public class recScene : MonoBehaviour
         try
         {
             await requestClient.SendAsync(data, data.Length);
-            Debug.Log($"Recording stopped.");
+            Debug.Log($"Streaming stopped.");
         }
         catch (Exception ex)
         {
             Debug.LogError("Error while sending or receiving UDP message: " + ex.Message);
         }
+        streamClient.Close();
         SceneManager.LoadScene("Main");
     }
 
@@ -226,7 +227,7 @@ public class recScene : MonoBehaviour
         try
         {
             await requestClient.SendAsync(data, data.Length);
-            Debug.Log($"Recording stopped.");
+            Debug.Log($"Streaming stopped.");
         }
         catch (Exception ex)
         {

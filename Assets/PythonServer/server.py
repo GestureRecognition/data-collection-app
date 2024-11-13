@@ -23,15 +23,16 @@ save_at = "Phone"   # if Phone & recording_device == "Camera"  (Phone/Local)
                     # we save the video in the phone with resp = sc.begin_record()
 video_writer = None
 is_recording = False
-frame_width = 320
-frame_height = 240
+is_glasses_recording = False
+frame_width = 1000
+frame_height = 680
 
 # Function to start recording
 def start_recording(filename):
     global video_writer, is_recording, frame_width, frame_height
     if not is_recording:
         os.makedirs('./recordings', exist_ok=True)
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # mp4v or mjpg
         file_path = f"./recordings/{filename}.mp4"
         video_writer = cv2.VideoWriter(file_path, fourcc, 20.0, (frame_width, frame_height))
         is_recording = True
@@ -47,15 +48,17 @@ def stop_recording():
         print("Recording stopped")
 
 def start_recording_sc():
-    global is_recording
-    if not is_recording:
+    global is_glasses_recording
+    if not is_glasses_recording:
         resp = sc.begin_record()
+        is_glasses_recording = True
         print(resp)
 
 def stop_recording_sc():
-    global is_recording
-    if is_recording:
+    global is_glasses_recording
+    if is_glasses_recording:
         resp = sc.end_record()
+        is_glasses_recording = False
         print(resp)
 
 # UDP Server to handle requests
@@ -124,6 +127,10 @@ def udp_server():
 
             elif message == "StopStreaming":
                 print("UDP Command: StopStreaming")
+                if is_recording:
+                    stop_recording()
+                elif is_glasses_recording:
+                    stop_recording_sc()
                 streaming_active = False
 
     except Exception as ex:
@@ -151,7 +158,8 @@ def glasses_start_streaming(sock, ip, port):
             frame_height, frame_width = frame.shape[:2]
 
             # Encode frame as JPEG to reduce size
-            _, buffer = cv2.imencode('.jpg', frame)
+            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 15]  # Set the quality to a lower value (0-100)
+            _, buffer = cv2.imencode('.jpg', frame, encode_param)
             data = buffer.tobytes()
             frame_size = len(data)
             # Send the frame size and frame data
@@ -248,7 +256,7 @@ def main():
     while True:
         if streaming_active:
             if recording_device == "Glasses" and glasses_client_connected:
-                glasses_start_streaming()
+                glasses_start_streaming(udp_video_sock, udp_video_ip, udp_video_port)
             elif recording_device == "Camera":
                 camera_start_streaming(udp_video_sock, udp_video_ip, udp_video_port)
             streaming_active = False
