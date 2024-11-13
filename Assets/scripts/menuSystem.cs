@@ -378,15 +378,15 @@ public class menuSystem : MonoBehaviour
         if (recordingDevice == "Camera") {
             recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Glasses";
             recordingDevice = "Glasses";
-            recSaveAtBtn.gameObject.SetActive(false);
+            recSaveAtBtn.gameObject.SetActive(true);
         } else if (recordingDevice == "Glasses") {
             recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Camera";
             recordingDevice = "Camera";
-            recSaveAtBtn.gameObject.SetActive(true);
+            recSaveAtBtn.gameObject.SetActive(false);
         } else {
             recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Camera";
             recordingDevice = "Camera";
-            recSaveAtBtn.gameObject.SetActive(true);
+            recSaveAtBtn.gameObject.SetActive(false);
         }
         lastSelectedButton = gestureButtons[gestureIndex];
     }
@@ -394,14 +394,14 @@ public class menuSystem : MonoBehaviour
     public void toggleSaveAt() 
     {
         if (saveAt == "Phone") {
-            recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Local";
-            recordingDevice = "Local";
+            recSaveAtBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Local";
+            saveAt = "Local";
         } else if (recordingDevice == "Local") {
-            recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Phone";
-            recordingDevice = "Phone";
+            recSaveAtBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Phone";
+            saveAt = "Phone";
         } else {
-            recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Phone";
-            recordingDevice = "Phone";
+            recSaveAtBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Phone";
+            saveAt = "Phone";
         }
         lastSelectedButton = gestureButtons[gestureIndex];
     }
