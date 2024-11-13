@@ -14,6 +14,8 @@ using System.Text;
 using System.Threading.Tasks;
 using System;
 using System.Reflection;
+using UnityEditor.PackageManager;
+using UnityEditor.VersionControl;
 
 public class menuSystem : MonoBehaviour
 {
@@ -40,14 +42,14 @@ public class menuSystem : MonoBehaviour
     // UDP server address and port
     private string serverIP = "127.0.0.1";
     private int serverPort = 9000;
+    UdpClient requestClient;
 
     private bool glassesConnected = true;
     private string recordingDevice = "Camera";
-    private bool saveAt = true;
+    private string saveAt = "Phone";
     private Button recDeviceBtn;
     private Button recSaveAtBtn;
     private Button refreshButton;
-    private TextMeshProUGUI refreshButton_text;
 
     void Start()
     {
@@ -78,60 +80,79 @@ public class menuSystem : MonoBehaviour
         if (gestureButtons.Length > 0) gestureButtons[0].Select();
         lastSelectedButton = gestureButtons[0];
 
+        requestClient = new UdpClient();
+        requestClient.Connect(serverIP, serverPort);
+
         recDeviceBtn = GameObject.Find("btn_recdev").GetComponent<Button>();
         recSaveAtBtn = GameObject.Find("btn_saveat").GetComponent<Button>();
         refreshButton = GameObject.Find("btn_refresh").GetComponent<Button>();
-        refreshButton_text = GameObject.Find("refresh_text").GetComponent<TextMeshProUGUI>();
-        refreshButton_text.color = Color.red;
-
-        //recDeviceBtn.interactable = false;
-        //recSaveAtBtn.gameObject.SetActive(false);
+        GameObject.Find("refresh_text").GetComponent<TextMeshProUGUI>().color = Color.red;
+        recSaveAtBtn.gameObject.SetActive(false);
+        recDeviceBtn.interactable = false;
+        CheckGlassesStatus();
 
         SetupTransformPanels();
         PlayVideo();
     }
 
-    async void SendGlassesStatusRequest()
+    async Task<bool> StartStreamingRequest()
     {
-        using (UdpClient client = new UdpClient())
+        if (recordingDevice == "Glasses" && !glassesConnected) return false;
+        // TODO Filename
+        string statusMessage = "StartStreaming:" + "TestingFilename" + ":" + recordingDevice + ":" + saveAt;
+        byte[] data = Encoding.UTF8.GetBytes(statusMessage);
+        try
         {
-            client.Connect(serverIP, serverPort);
-            byte[] data = Encoding.UTF8.GetBytes("GlassesStatus");
-
-            try
+            await requestClient.SendAsync(data, data.Length);
+            Task<UdpReceiveResult> receiveTask = requestClient.ReceiveAsync();
+            if (await System.Threading.Tasks.Task.WhenAny(receiveTask, System.Threading.Tasks.Task.Delay(5000)) == receiveTask)
             {
-                await client.SendAsync(data, data.Length);
+                string response = Encoding.UTF8.GetString(receiveTask.Result.Buffer);
+                Debug.Log("Response received: " + response);
 
-                // Wait for the response with a timeout
-                Task<UdpReceiveResult> receiveTask = client.ReceiveAsync();
-                if (await Task.WhenAny(receiveTask, Task.Delay(5000)) == receiveTask)
-                {
-                    string response = Encoding.UTF8.GetString(receiveTask.Result.Buffer);
-                    Debug.Log("Response received: " + response);
-
-                    if (response == "GlassesConnected")
-                    {
-                        recDeviceBtn.interactable = true;
-                        refreshButton_text.color = Color.green;
-                        Debug.Log("Glasses Connected");
-                    }
-                    else
-                    {
-                        recDeviceBtn.interactable = false;
-                        //recDeviceBtn.GetComponentInChildren<TextMeshPro>().text = "Camera";
-                        refreshButton_text.color = Color.red;
-                        Debug.Log("Glasses Not Connected");
-                    }
-                }
-                else
-                {
-                    Debug.LogError("Server response timed out");
-                }
+                if (response == "StartedStreaming") return true;
+                else return false;
             }
-            catch (Exception ex)
+            else
             {
-                Debug.LogError("Error while sending or receiving UDP message: " + ex.Message);
+                Debug.LogError("Server response timed out");
+                return false;
             }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError("Error while sending or receiving UDP message: " + ex.Message);
+            return false;
+        }
+    }
+
+    async Task<bool> SendGlassesStatusRequest()
+    {
+        byte[] data = Encoding.UTF8.GetBytes("GlassesStatus");
+        try
+        {
+            await requestClient.SendAsync(data, data.Length);
+
+            // Wait for the response with a timeout
+            Task<UdpReceiveResult> receiveTask = requestClient.ReceiveAsync();
+            if (await System.Threading.Tasks.Task.WhenAny(receiveTask, System.Threading.Tasks.Task.Delay(5000)) == receiveTask)
+            {
+                string response = Encoding.UTF8.GetString(receiveTask.Result.Buffer);
+                Debug.Log("Response received: " + response);
+
+                if (response == "GlassesConnected") return true;
+                else return false;
+            }
+            else
+            {
+                Debug.LogError("Server response timed out");
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError("Error while sending or receiving UDP message: " + ex.Message);
+            return false;
         }
     }
 
@@ -324,17 +345,64 @@ public class menuSystem : MonoBehaviour
         }
     }
 
-    public void loadRecording()
+    public async void loadRecording()
     {
-        SceneManager.LoadScene("Recording");
+        bool streamingStart = await StartStreamingRequest();
+        if (streamingStart) SceneManager.LoadScene("Recording");
+        else Debug.Log("Unexpected Error Failed to loadRecording");
     }
 
-    // Call this function to send a status request
-    public void CheckGlassesStatus()
+    public async void CheckGlassesStatus()
     {
-        SendGlassesStatusRequest();
+        glassesConnected = await SendGlassesStatusRequest();
+        if (glassesConnected)
+        {
+            recDeviceBtn.interactable = true;
+            GameObject.Find("refresh_text").GetComponent<TextMeshProUGUI>().color = Color.green;
+            Debug.Log("Glasses Connected");
+        }
+        else
+        {
+            recDeviceBtn.interactable = false;
+            recSaveAtBtn.gameObject.SetActive(false);
+            recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Camera";
+            GameObject.Find("refresh_text").GetComponent<TextMeshProUGUI>().color = Color.red;
+            Debug.Log("Glasses Not Connected");
+        }
         lastSelectedButton = gestureButtons[gestureIndex];
     }
 
 
+    public void toggleDeviceButton()
+    {
+        if (recordingDevice == "Camera") {
+            recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Glasses";
+            recordingDevice = "Glasses";
+            recSaveAtBtn.gameObject.SetActive(false);
+        } else if (recordingDevice == "Glasses") {
+            recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Camera";
+            recordingDevice = "Camera";
+            recSaveAtBtn.gameObject.SetActive(true);
+        } else {
+            recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Camera";
+            recordingDevice = "Camera";
+            recSaveAtBtn.gameObject.SetActive(true);
+        }
+        lastSelectedButton = gestureButtons[gestureIndex];
+    }
+
+    public void toggleSaveAt() 
+    {
+        if (saveAt == "Phone") {
+            recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Local";
+            recordingDevice = "Local";
+        } else if (recordingDevice == "Local") {
+            recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Phone";
+            recordingDevice = "Phone";
+        } else {
+            recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Phone";
+            recordingDevice = "Phone";
+        }
+        lastSelectedButton = gestureButtons[gestureIndex];
+    }
 }

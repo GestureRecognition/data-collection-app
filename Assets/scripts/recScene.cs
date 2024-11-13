@@ -1,8 +1,14 @@
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -12,13 +18,13 @@ using Debug = UnityEngine.Debug;
 
 public class recScene : MonoBehaviour
 {
-    public float delayBetweenFrames = 0.04f; // 25 FPS recording/playback
-    private List<Texture2D> frames = new List<Texture2D>();
     private bool isRecording = false;
-    private bool isPlaying = false;
-    public RawImage targetRawImage; // The RawImage you want to "screenshot"
-    public RawImage scrn;           // RawImage where frames will be displayed
-    private float timeSinceLastFrame = 0f;
+    private bool isReceiving = true; // Flag to control thread execution
+    public RawImage displayScreen; // for displaying the stream
+    private int port = 9001;
+    private UdpClient streamClient;
+    private IPEndPoint endPoint;
+    private Texture2D texture;
 
     private Transform previewLayout;
     private Image[] sideImages = new Image[5];
@@ -26,11 +32,73 @@ public class recScene : MonoBehaviour
     private Image recording_indicator;
     private TextMeshProUGUI countdown;
 
-    // Start is called before the first frame update
+    private string serverIP = "127.0.0.1";
+    private int serverPort = 9000;
+    private UdpClient requestClient;
+    private Thread receiveThread;
+    private ConcurrentQueue<byte[]> frameQueue = new ConcurrentQueue<byte[]>();
+
+
+
     void Start()
     {
+        requestClient = new UdpClient();
+        requestClient.Connect(serverIP, serverPort);
+        streamClient = new UdpClient(port);
+        endPoint = new IPEndPoint(IPAddress.Any, port);
+
+        texture = new Texture2D(1000, 680, TextureFormat.RGB24, false);
+        displayScreen = GameObject.Find("displayScreen").GetComponent<RawImage>();
+
+        isReceiving = true;
+        receiveThread = new Thread(ReceiveFrames)
+        {
+            IsBackground = true
+        };
+        receiveThread.Start();
+
+
         setupRecording();
         setupSideImages();
+    }
+
+    private void ReceiveFrames()
+    {
+        while (isReceiving)
+        {
+            try
+            {
+                byte[] data = streamClient.Receive(ref endPoint);
+
+                // Read frame size (first 4 bytes as an int)
+                int frameSize = BitConverter.ToInt32(data, 0);
+                byte[] frameData = new byte[frameSize];
+                Array.Copy(data, 4, frameData, 0, frameSize);
+
+                frameQueue.Enqueue(frameData);
+            }
+            catch (SocketException ex) when (isReceiving == false)
+            {
+                // Expected exception when closing the socket, break the loop
+                Debug.Log("StreamClient closed.");
+                break;
+            }
+            catch (Exception ex)
+            {
+                Debug.Log("Error receiving frame: " + ex.Message);
+            }
+        }
+    }
+
+    private void UpdateTexture(byte[] frameData)
+    {
+        // Load image data into texture
+        texture.LoadImage(frameData);
+
+        if (displayScreen != null)
+        {
+            displayScreen.texture = texture;
+        }
     }
 
     void setupRecording()
@@ -47,115 +115,45 @@ public class recScene : MonoBehaviour
     {
         for (int i = 3; i > 0; i--)
         {
-            countdown.text = i.ToString();    // Update the text to the current countdown value
-            yield return new WaitForSeconds(1);  // Wait for 1 second
+            countdown.text = i.ToString();
+            yield return new WaitForSeconds(1);
         }
-        countdown.gameObject.SetActive(false);  // Option 2: Disable the countdown GameObject
+        countdown.gameObject.SetActive(false);
         StartRecording();
     }
 
-    void StartRecording()
+    async void StartRecording()
     {
-        frames.Clear();
         isRecording = true;
         recording_indicator.gameObject.SetActive(true);
-        Debug.Log("Recording started.");
+
+        byte[] data = Encoding.UTF8.GetBytes("StartRecording");
+        try
+        {
+            await requestClient.SendAsync(data, data.Length);
+            Debug.Log("Recording started.");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError("Error while sending or receiving UDP message: " + ex.Message);
+        }
     }
 
-    void StopRecording()
+    async void StopRecording()
     {
         isRecording = false;
         recording_indicator.gameObject.SetActive(false);
-        Debug.Log($"Recording stopped. Total frames recorded: {frames.Count}");
-        StartPlayback();
-    }
 
-    // Capture the current state of the target RawImage
-    Texture2D CaptureFrameFromRawImage()
-    {
-        Texture2D frame = new Texture2D(targetRawImage.texture.width, targetRawImage.texture.height, TextureFormat.RGB24, false);
-
-        // Copy the RawImage texture to a Texture2D
-        RenderTexture rt = RenderTexture.GetTemporary(targetRawImage.texture.width, targetRawImage.texture.height);
-        Graphics.Blit(targetRawImage.texture, rt);
-        RenderTexture.active = rt;
-
-        frame.ReadPixels(new Rect(0, 0, targetRawImage.texture.width, targetRawImage.texture.height), 0, 0);
-        frame.Apply();
-
-        RenderTexture.active = null;
-        RenderTexture.ReleaseTemporary(rt);
-
-        Debug.Log("Captured frame from RawImage.");
-        return frame;
-    }
-
-    void RecordFrame()
-    {
-        if (isRecording)
+        byte[] data = Encoding.UTF8.GetBytes("StopRecording");
+        try
         {
-            Texture2D frame = CaptureFrameFromRawImage();
-            frames.Add(frame);
-
-            Debug.Log($"Captured Frame {frames.Count}. Resolution: {frame.width}x{frame.height}");
+            await requestClient.SendAsync(data, data.Length);
+            Debug.Log($"Recording stopped.");
         }
-    }
-
-    void DisplayFrame(Texture2D frame)
-    {
-        scrn.texture = frame;
-        Debug.Log("Displaying frame on screen.");
-    }
-
-    void SetWhiteDisplay()
-    {
-        // Create a new white texture and apply it to the scrn RawImage
-        Texture2D whiteTexture = new Texture2D(scrn.texture.width, scrn.texture.height);
-        Color whiteColor = Color.white;
-
-        // Fill the texture with white color
-        for (int y = 0; y < whiteTexture.height; y++)
+        catch (Exception ex)
         {
-            for (int x = 0; x < whiteTexture.width; x++)
-            {
-                whiteTexture.SetPixel(x, y, whiteColor);
-            }
+            Debug.LogError("Error while sending or receiving UDP message: " + ex.Message);
         }
-        whiteTexture.Apply();
-
-        // Assign the white texture to the RawImage
-        scrn.texture = whiteTexture;
-        Debug.Log("Display set to white.");
-    }
-
-    void StartPlayback()
-    {
-        if (!isPlaying && frames.Count > 0)
-        {
-            Debug.Log($"Starting playback. Total frames to display: {frames.Count}");
-            StartCoroutine(Playback());
-        }
-        else
-        {
-            Debug.LogWarning("No frames available for playback or playback already in progress.");
-        }
-    }
-
-    IEnumerator Playback()
-    {
-        isPlaying = true;
-        for (int i = 0; i < frames.Count; i++)
-        {
-            DisplayFrame(frames[i]);
-            Debug.Log($"Displaying frame {i + 1}/{frames.Count}.");
-            yield return new WaitForSeconds(delayBetweenFrames);
-        }
-
-        // Set the display to white after playback
-        SetWhiteDisplay();
-
-        isPlaying = false;
-        Debug.Log("Playback finished.");
     }
 
     void setupSideImages()
@@ -190,57 +188,13 @@ public class recScene : MonoBehaviour
         }
     }
 
-    // Save each frame to disk as an image file
-    void SaveFramesAsImages()
-    {
-        string directoryPath = Application.persistentDataPath + "/Output/recorded_frames/";
-        //string directoryPath = "./Output/recorded_frames/";
-
-        // Ensure directory exists
-        if (!Directory.Exists(directoryPath))
-        {
-            Directory.CreateDirectory(directoryPath);
-        }
-
-        for (int i = 0; i < frames.Count; i++)
-        {
-            byte[] bytes = frames[i].EncodeToPNG();  // Save as PNG
-            string filePath = directoryPath + "frame_" + i.ToString("D4") + ".png"; // Frame_0000.png
-            File.WriteAllBytes(filePath, bytes);
-
-            Debug.Log($"Saved frame {i} to {filePath}");
-        }
-    }
-
-    void ClearSavedFrameImages()
-    {
-        string directoryPath = Application.persistentDataPath + "/Output/recorded_frames/";
-        //string directoryPath = "./Output/recorded_frames/";
-
-        // Check if the directory exists
-        if (Directory.Exists(directoryPath))
-        {
-            // Get all files in the directory and delete them
-            string[] files = Directory.GetFiles(directoryPath);
-            foreach (string file in files)
-            {
-                File.Delete(file);
-                Debug.Log($"Deleted {file}");
-            }
-
-            // Optionally, delete the directory itself
-            Directory.Delete(directoryPath);
-            Debug.Log($"Deleted directory {directoryPath}");
-        }
-        else
-        {
-            Debug.LogWarning("No saved frames directory found.");
-        }
-    }
-
     // Update is called once per frame
     void Update()
     {
+        while (frameQueue.TryDequeue(out byte[] frameData))
+        {
+            UpdateTexture(frameData);
+        }
         if (Input.GetKeyDown(KeyCode.Space) && !isRecording)
         {
             StartRecording();
@@ -249,77 +203,48 @@ public class recScene : MonoBehaviour
         {
             StopRecording();
         }
-        if (Input.GetKeyDown(KeyCode.Return) && !isRecording)
-        {
-            StartPlayback();
-        }
     }
 
-    private void LateUpdate()
+    async public void SaveNext()
     {
-        timeSinceLastFrame += Time.deltaTime;
-        if (isRecording && timeSinceLastFrame >= delayBetweenFrames)
+        byte[] data = Encoding.UTF8.GetBytes("StopStreaming");
+        try
         {
-            RecordFrame();
-            timeSinceLastFrame = 0f;
-
-            Debug.Log("New frame recorded based on delayBetweenFrames.");
+            await requestClient.SendAsync(data, data.Length);
+            Debug.Log($"Recording stopped.");
         }
-    }
-
-    public void SaveNext()
-    {
-        // Save the individual frames
-        SaveFramesAsImages();
-        /*
-        string videoName = string.Join("-", MainManager.Instance.randomMp4Files);
-        string videoPath = Application.persistentDataPath + "/Output/" + videoName + " " + DateTime.Now.ToString("yyyy-MM-dd-HHmmss") + ".mp4";
-        //string videoPath = "./Output/" + videoName + " " + DateTime.Now.ToString("yyyy-MM-dd-HHmmss") + ".mp4";
-
-        // Call FFmpeg to convert images to video (make sure FFmpeg is installed)
-        string ffmpegPath = "C:\\ProgramData\\chocoportable\\lib\\ffmpeg\\tools\\ffmpeg";  // PATH to FFmpeg executable \\tools\\ffmpeg
-        string inputPattern = Application.persistentDataPath + "/Output/recorded_frames/frame_%04d.png";  // Input file pattern
-        //string inputPattern = "./Output/recorded_frames/frame_%04d.png";  // Input file pattern
-        string arguments = $"-r 25 -i \"{inputPattern}\" -vcodec libx264 -pix_fmt yuv420p \"{videoPath}\"";  // FFmpeg arguments
-
-        // Start the FFmpeg process
-        ProcessStartInfo startInfo = new ProcessStartInfo(ffmpegPath, arguments)
+        catch (Exception ex)
         {
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-
-        Process ffmpegProcess = new Process
-        {
-            StartInfo = startInfo
-        };
-
-        ffmpegProcess.Start();
-
-        string ffmpegOutput = ffmpegProcess.StandardError.ReadToEnd();
-        ffmpegProcess.WaitForExit();
-
-        if (ffmpegProcess.ExitCode == 0)
-        {
-            Debug.Log($"Video saved to {videoPath}");
+            Debug.LogError("Error while sending or receiving UDP message: " + ex.Message);
         }
-        else
-        {
-            Debug.LogError($"FFmpeg error: {ffmpegOutput}");
-        }
-        */
-        ClearSavedFrameImages();
-
         SceneManager.LoadScene("Main");
     }
 
-    public void ExitBtn()
+    async public void ExitBtn()
     {
+        byte[] data = Encoding.UTF8.GetBytes("StopStreaming");
+        try
+        {
+            await requestClient.SendAsync(data, data.Length);
+            Debug.Log($"Recording stopped.");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError("Error while sending or receiving UDP message: " + ex.Message);
+        }
         //Save Log TODO
         Application.Quit();
         Debug.Log("Application is exiting");
         UnityEditor.EditorApplication.isPlaying = false;
+    }
+
+    private void OnApplicationQuit()
+    {
+        isReceiving = false; // Signal thread to stop
+        if (receiveThread != null && receiveThread.IsAlive)
+        {
+            receiveThread.Join(); // Wait for the thread to exit
+        }
+        streamClient.Close(); // Safely close UdpClient
     }
 }

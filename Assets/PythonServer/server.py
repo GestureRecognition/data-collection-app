@@ -1,5 +1,6 @@
 import os
 import socket
+import struct
 import threading
 import cv2
 from datetime import datetime
@@ -82,6 +83,7 @@ def udp_server():
                     save_at = destination
                     streaming_active = True
                     print(f"Starting streaming with file '{filename}', device '{device}', save at '{destination}'")
+                    sock.sendto("StartedStreaming".encode(), client_addr)
                 except ValueError:
                     print("Invalid StartStreaming command format.")
                     continue
@@ -96,16 +98,15 @@ def udp_server():
                         glasses_client_connected = False
                 else:
                     print("Glasses not connected, attempting to reconnect...")
+                    sock.sendto("GlassesNotConnected".encode(), client_addr)
                     # Try to reconnect or re-sync the client
                     try:
                         # Attempt to reconnect (you may want to adjust retries or timeout)
                         sc = SyncClient(*get_ip_and_port())  # Recreate the SyncClient instance
                         glasses_client_connected = True
                         print(f"Reconnected to Ganzin SDK at {get_ip_and_port()}")
-                        sock.sendto("GlassesConnected".encode(), client_addr)
                     except Exception as ex:
                         print(f"Failed to reconnect: {ex}")
-                        sock.sendto("GlassesNotConnected".encode(), client_addr)
 
             elif message == "StartRecording":
                 print("UDP Command: StartRecording")
@@ -130,7 +131,7 @@ def udp_server():
     finally:
         sock.close()
 
-def glasses_start_streaming():
+def glasses_start_streaming(sock, ip, port):
     global streaming_active, frame_height, frame_width
 
     # Create a streaming thread
@@ -148,6 +149,13 @@ def glasses_start_streaming():
             frame_datum = frame_data[-1]  # Get the latest frame
             frame = frame_datum.get_buffer()
             frame_height, frame_width = frame.shape[:2]
+
+            # Encode frame as JPEG to reduce size
+            _, buffer = cv2.imencode('.jpg', frame)
+            data = buffer.tobytes()
+            frame_size = len(data)
+            # Send the frame size and frame data
+            sock.sendto(struct.pack("L", frame_size) + data, (ip, port))
 
             # Write the frame if recording is active
             if is_recording and video_writer is not None:
@@ -168,7 +176,7 @@ def glasses_start_streaming():
         th.join()
         cv2.destroyAllWindows()
 
-def camera_start_streaming():
+def camera_start_streaming(sock, ip, port):
     global streaming_active, frame_width, frame_height
 
     # Open the default camera (usually the webcam)
@@ -187,6 +195,13 @@ def camera_start_streaming():
 
             # Update frame dimensions dynamically
             frame_height, frame_width = frame.shape[:2]
+
+            # Encode frame as JPEG to reduce size
+            _, buffer = cv2.imencode('.jpg', frame)
+            data = buffer.tobytes()
+            frame_size = len(data)
+            # Send the frame size and frame data
+            sock.sendto(struct.pack("L", frame_size) + data, (ip, port))
 
             # Write the frame to video if recording is active
             if is_recording and video_writer is not None:
@@ -209,6 +224,17 @@ def camera_start_streaming():
 def main():
     global streaming_active, glasses_client_connected, sc
     address, port = get_ip_and_port()
+
+    # Start the UDP server in a separate thread
+    udp_thread = threading.Thread(target=udp_server)
+    udp_thread.daemon = True  # This allows the program to exit even if the thread is running
+    udp_thread.start()
+
+    # Setup UDP video stream socket
+    udp_video_ip = "127.0.0.1"  # Set the Unity device IP here
+    udp_video_port = 9001  # Use a different port for video frames
+    udp_video_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
     try:
         # Try to create a SyncClient connection
         sc = SyncClient(address, port)
@@ -218,20 +244,15 @@ def main():
         glasses_client_connected = False
         print(f"Failed to connect to Ganzin SDK at {address}:{port}. Error: {ex}")
 
-    # Start the UDP server in a separate thread
-    udp_thread = threading.Thread(target=udp_server)
-    udp_thread.daemon = True  # This allows the program to exit even if the thread is running
-    udp_thread.start()
-
     # Start the streaming in the main thread
     while True:
         if streaming_active:
             if recording_device == "Glasses" and glasses_client_connected:
                 glasses_start_streaming()
             elif recording_device == "Camera":
-                camera_start_streaming()
+                camera_start_streaming(udp_video_sock, udp_video_ip, udp_video_port)
             streaming_active = False
-            # TODO save the video mechanism
+            # TODO save/delete the video mechanism
 
 
 if __name__ == '__main__':
