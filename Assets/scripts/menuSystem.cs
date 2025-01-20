@@ -16,72 +16,73 @@ using System;
 using System.Reflection;
 using UnityEditor.PackageManager;
 using UnityEditor.VersionControl;
+using TMPro.Examples;
+using System.Text.RegularExpressions;
 
 public class menuSystem : MonoBehaviour
 {
-    private string directoryPath = ".\\Assets\\trialPreview";
-    private string previewType = "0.6x";
-    private string videoDirectoryPath;
-    private List<string> allMp4Files = new List<string>();
-    private string displayedGesture;
+    //Arguments ==================================
+    private int maxFileNameLength = 50;
+
+    //Components =================================
     private TextMeshProUGUI descText;
-    private int gestureIndex;
-
-    private string GestDescFilename = "GestureDescription.csv";
-    private Dictionary<string, string> gestureData = new Dictionary<string, string>();
-
     private Button[] gestureButtons = new Button[5];
     private Button lastSelectedButton;
-
-    private VideoPlayer videoPlayer;
-
-    private string imagePreviewType = "0.6x_5FRAME";
-    private Transform[] layoutPanels = new Transform[5];
-    private Image[,] previewImages = new Image[5, 5];
-
-    // UDP server address and port
-    private string serverIP = "127.0.0.1";
-    private int serverPort = 9000;
-    UdpClient requestClient;
-
-    private bool glassesConnected = true;
-    private string recordingDevice = "Camera";
-    private string saveAt = "Phone";
     private Button recDeviceBtn;
     private Button recSaveAtBtn;
     private Button refreshButton;
+    private VideoPlayer videoPlayer;
+    private Transform[] layoutPanels = new Transform[5];
+    private Image[,] previewImages = new Image[5, 5];
+    private UdpClient requestClient;
+    private Toggle dateToggle; 
+    private TMP_InputField inputFieldFilename;
+
+    //Variables ==================================
+    private string displayedGesture;
+    private int selectedGestureIndex = 0;
+    private bool glassesConnected = true;
+    private string recordingDevice = "Camera";
+    private string saveAt = "Phone";
+    private string validatedFileName = "";
+    private bool isDateOn;
 
     void Start()
     {
-        videoDirectoryPath = Path.Combine(directoryPath, previewType);
-        MainManager.Instance.imageDirectoryPath = Path.Combine(directoryPath, imagePreviewType);
-        videoPlayer = GameObject.Find("GesturePreviewPlayer").GetComponent<VideoPlayer>();
+        Debug.Log("Menu System Start Function");  //DEBUG
+        // Initialize ServerPort
+        requestClient = new UdpClient();
+        requestClient.Connect(MainManager.Instance.serverIP, MainManager.Instance.serverPort);
 
-        FetchMp4Files();
-        while (MainManager.Instance.shuffledQueue.Count < 5) ShuffleAndFillQueue();
-        SelectRandomMp4Files();
-
-        if (MainManager.Instance.randomMp4Files.Count != 0)
-        {
-            displayedGesture = MainManager.Instance.randomMp4Files[0];
-            foreach (string file in MainManager.Instance.randomMp4Files)
-            {
-                Debug.Log("Selected MP4 file: " + file);
-            }
+        // Select Random Mini Batch
+        if (MainManager.Instance.noNeedToShuffle) {
+            MainManager.Instance.noNeedToShuffle = false;
         }
+        else {
+            MainManager.Instance.SelectRandomMiniBatch();
+        }
+        displayedGesture = MainManager.Instance.gestureMiniBatch[0];
 
-        ReadDescCSV();
-
+        // Initializing Components
+        videoPlayer = GameObject.Find("GesturePreviewPlayer").GetComponent<VideoPlayer>();
         descText = GameObject.Find("Description").GetComponent<TextMeshProUGUI>();
-        gestureIndex = 0;
-        updateText();
+        dateToggle = GameObject.Find("dateToggle").GetComponent<Toggle>();
+        inputFieldFilename = GameObject.Find("inputFieldFilename").GetComponent<TMP_InputField>();
 
+        if (dateToggle != null)
+        {
+            isDateOn = dateToggle.isOn;
+            dateToggle.onValueChanged.AddListener(OnDateToggleValueChanged);
+        }
+        if (inputFieldFilename != null)
+        {
+            inputFieldFilename.onValueChanged.AddListener(OnInputFilenameChanged);
+        }
+        selectedGestureIndex = 0;
+        UpdateDescText();
         SetupGestureButtons();
         if (gestureButtons.Length > 0) gestureButtons[0].Select();
         lastSelectedButton = gestureButtons[0];
-
-        requestClient = new UdpClient();
-        requestClient.Connect(serverIP, serverPort);
 
         recDeviceBtn = GameObject.Find("btn_recdev").GetComponent<Button>();
         recSaveAtBtn = GameObject.Find("btn_saveat").GetComponent<Button>();
@@ -89,17 +90,23 @@ public class menuSystem : MonoBehaviour
         GameObject.Find("refresh_text").GetComponent<TextMeshProUGUI>().color = Color.red;
         recSaveAtBtn.gameObject.SetActive(false);
         recDeviceBtn.interactable = false;
-        CheckGlassesStatus();
 
+        CheckGlassesStatus();
         SetupTransformPanels();
-        PlayVideo();
+        PlayGestureVideo();
     }
 
+    // Request Functions ==================================
     async Task<bool> StartStreamingRequest()
     {
         if (recordingDevice == "Glasses" && !glassesConnected) return false;
-        // TODO Filename
-        string statusMessage = "StartStreaming:" + "TestingFilename" + ":" + recordingDevice + ":" + saveAt;
+        // StartStreaming:<FilenameNote>:<isDateOn>:<recordingDevice>:<saveAt>
+        string statusMessage = "StartStreaming:" 
+            + (validatedFileName == ""? "NoNote":validatedFileName) 
+            + ":" + (isDateOn ? "1" : "0") 
+            + ":" + recordingDevice 
+            + ":" + saveAt;
+        Debug.Log(statusMessage); // DEBUG
         byte[] data = Encoding.UTF8.GetBytes(statusMessage);
         try
         {
@@ -125,7 +132,6 @@ public class menuSystem : MonoBehaviour
             return false;
         }
     }
-
     async Task<bool> SendGlassesStatusRequest()
     {
         byte[] data = Encoding.UTF8.GetBytes("GlassesStatus");
@@ -155,84 +161,10 @@ public class menuSystem : MonoBehaviour
             return false;
         }
     }
+    // Request Functions [END]=============================
 
 
-
-    void FetchMp4Files()
-    {
-        if (Directory.Exists(videoDirectoryPath))
-        {
-            string[] mp4Files = Directory.GetFiles(videoDirectoryPath, "*.mp4");
-            foreach (string filePath in mp4Files)
-            {
-                allMp4Files.Add(Path.GetFileName(filePath));
-            }
-
-            Debug.Log("Found " + allMp4Files.Count + " MP4 files.");
-        }
-        else
-        {
-            Debug.LogError("Directory does not exist: " + videoDirectoryPath);
-        }
-    }
-
-    void ShuffleAndFillQueue()
-    {
-        List<string> shuffledList = allMp4Files.OrderBy(x => UnityEngine.Random.value).ToList();
-        MainManager.Instance.shuffledQueue.Clear();
-        foreach (string file in shuffledList)
-        {
-            MainManager.Instance.shuffledQueue.Enqueue(file);
-        }
-    }
-
-    void SelectRandomMp4Files()
-    {
-        while (MainManager.Instance.shuffledQueue.Count < 5)
-        {
-            ShuffleAndFillQueue();
-        }
-
-        int numberOfFilesToSelect = Mathf.Min(5, MainManager.Instance.shuffledQueue.Count);
-        MainManager.Instance.randomMp4Files = new List<string>();
-        for (int i = 0; i < numberOfFilesToSelect; i++)
-        {
-            if (MainManager.Instance.shuffledQueue.Count > 0)
-            {
-                MainManager.Instance.randomMp4Files.Add(Path.GetFileNameWithoutExtension(MainManager.Instance.shuffledQueue.Dequeue()));
-            }
-        }
-    }
-
-    public void ReadDescCSV()
-    {
-        string filePath = Path.Combine(directoryPath, GestDescFilename);
-        if (File.Exists(filePath))
-        {
-            string[] csvLines = File.ReadAllLines(filePath);
-
-            foreach (string line in csvLines)
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-
-                string[] values = line.Split(';');
-
-                if (values[0] == "ID") continue;
-
-                string id = values[0];
-                string description = values[1];
-
-                gestureData.Add(id, description);
-            }
-
-            Debug.Log("CSV file read successfully.");
-        }
-        else
-        {
-            Debug.LogError("CSV file not found at: " + filePath);
-        }
-    }
-
+    // Setup Functions ====================================
     void SetupGestureButtons()
     {
         for (int i = 0; i < gestureButtons.Length; i++)
@@ -242,116 +174,108 @@ public class menuSystem : MonoBehaviour
             gestureButtons[index].onClick.AddListener(() => OnGestureButtonClick(index));
         }
     }
-
     void SetupTransformPanels()
     {
         for (int i = 0; i < layoutPanels.Length; i++)
         {
-            int index = i;
-            layoutPanels[index] = GameObject.Find("LayoutPanel_" + index).GetComponent<Transform>();
-            for (int j = 0; j < layoutPanels[index].childCount; j++)
-            {
-                previewImages[i, j] = layoutPanels[index].GetChild(j).GetComponent<Image>();
+            layoutPanels[i] = GameObject.Find($"LayoutPanel_{i}").transform;
+            LoadPreviewImages(i);
+        }
+    }
+    void LoadPreviewImages(int panelIndex)
+    {
+        for (int j = 0; j < layoutPanels[panelIndex].childCount; j++)
+        {
+            var child = layoutPanels[panelIndex].GetChild(j);
+            previewImages[panelIndex, j] = child.GetComponent<Image>();
 
-                string imagePath = Path.Combine(MainManager.Instance.imageDirectoryPath, MainManager.Instance.randomMp4Files[i] + "_frame_" + (j + 1) + ".png");
-                if (File.Exists(imagePath))
-                {
-                    byte[] imageBytes = File.ReadAllBytes(imagePath);
-                    Texture2D texture = new Texture2D(2, 2);
-                    texture.LoadImage(imageBytes);
-                    Sprite tempSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
-                    previewImages[i, j].sprite = tempSprite;
-                }
-                else
-                {
-                    Debug.LogWarning("Image not found at: " + imagePath);
-                }
+            string imagePath = Path.Combine(
+                MainManager.Instance.imageDirectoryPath,
+                $"{MainManager.Instance.gestureMiniBatch[panelIndex]}_frame_{j + 1}.png"
+            );
+
+            if (File.Exists(imagePath))
+            {
+                previewImages[panelIndex, j].sprite = LoadSprite(imagePath);
+            }
+            else
+            {
+                Debug.LogWarning($"Image not found: {imagePath}");
             }
         }
     }
-
+    Sprite LoadSprite(string imagePath)
+    {
+        byte[] imageBytes = File.ReadAllBytes(imagePath);
+        Texture2D texture = new Texture2D(2, 2);
+        texture.LoadImage(imageBytes);
+        return Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+    }
     void OnGestureButtonClick(int buttonIndex)
     {
-        gestureIndex = buttonIndex;
-        updateText();
+        selectedGestureIndex = buttonIndex;
+        UpdateDescText();
         Debug.Log("Gesture Button " + buttonIndex + " clicked");
         lastSelectedButton = gestureButtons[buttonIndex];
-        PlayVideo();
+        PlayGestureVideo();
     }
+    // Setup Functions [END]===============================
 
-    public void nextGest()
+
+    // Utils Functions ====================================
+    void UpdateDescText()
     {
-        if (gestureIndex < 4)
-        {
-            gestureIndex++;
-            updateText();
-            PlayVideo();
-        }
-        Debug.Log("Next Pressed");
-        gestureButtons[gestureIndex].Select();
-        lastSelectedButton = gestureButtons[gestureIndex];
-    }
+        string gestID = MainManager.Instance.gestureMiniBatch[selectedGestureIndex];
+        string numID = ToNumericName(gestID);
 
-    public void prevGest()
-    {
-        if (gestureIndex > 0)
+        if (MainManager.Instance.gestureDescData.ContainsKey(gestID))
         {
-            gestureIndex--;
-            updateText();
-            PlayVideo();
-        }
-        Debug.Log("Prev Pressed");
-        gestureButtons[gestureIndex].Select();
-        lastSelectedButton = gestureButtons[gestureIndex];
-    }
-
-    void updateText()
-    {
-        string GestID = MainManager.Instance.randomMp4Files[gestureIndex];
-        string numID;
-        if (GestID.StartsWith("EGO")) numID = "0";
-        else if (GestID.StartsWith("ETC")) numID = "1";
-        else if (GestID.StartsWith("NUM")) numID = "2";
-        else numID = "3";
-        numID += GestID.Split('_')[1];
-
-        if (gestureData.ContainsKey(GestID))
-        {
-            descText.text = numID + "(" + GestID + ") : " + gestureData[GestID];
+            descText.text = numID + "(" + gestID + ") : " + MainManager.Instance.gestureDescData[gestID];
         }
         else
         {
-            Debug.LogWarning(GestID + " : ID not found in CSV data.");
-            descText.text = GestID + " : ID not found in CSV data.";
+            Debug.LogWarning(numID + "(" + gestID + " ) : ID not found in CSV data.");
+            descText.text = numID + "(" + gestID + " ) : ID not found in CSV data.";
         }
     }
-
-    void PlayVideo()
+    string ToNumericName(string gestID)
     {
-        string videoPath = Path.Combine(videoDirectoryPath, MainManager.Instance.randomMp4Files[gestureIndex] + ".mp4");
+        string numID;
+        if (gestID.StartsWith("EGO")) numID = "0";
+        else if (gestID.StartsWith("ETC")) numID = "1";
+        else if (gestID.StartsWith("NUM")) numID = "2";
+        else numID = "3";
+        numID += gestID.Split('_')[1];
+        return numID;
+    }
+    string ToAlphaName(string numID)
+    {
+        string gestID;
+        if (numID.StartsWith("0")) gestID = "EGO";
+        else if (numID.StartsWith("1")) gestID = "ETC";
+        else if (numID.StartsWith("2")) gestID = "NUM";
+        else gestID = "ETC";
+        gestID += "_" + numID.Substring(1);
+        return gestID;
+    }
+    void PlayGestureVideo()
+    {
+        string videoPath = Path.Combine(MainManager.Instance.videoDirectoryPath, MainManager.Instance.gestureMiniBatch[selectedGestureIndex] + ".mp4");
         videoPlayer.url = videoPath;
         videoPlayer.Play();
         Debug.Log("Playing video: " + videoPath);
     }
+    // Utils Functions [END]===============================
 
-    void Update()
-    {
-        if (EventSystem.current.currentSelectedGameObject == null)
-        {
-            if (lastSelectedButton != null)
-            {
-                lastSelectedButton.Select();
-            }
-        }
-    }
 
-    public async void loadRecording()
+    // Button Functions ====================================
+    public async void LoadRecording()
     {
         bool streamingStart = await StartStreamingRequest();
-        if (streamingStart) SceneManager.LoadScene("Recording");
+        if (streamingStart) SceneManager.LoadScene("Record2");
         else Debug.Log("Unexpected Error Failed to loadRecording");
+        SceneManager.LoadScene("Record2"); //temp DEBUG because i dont want to activate the python server TODO Remove
     }
-
     public async void CheckGlassesStatus()
     {
         glassesConnected = await SendGlassesStatusRequest();
@@ -369,40 +293,82 @@ public class menuSystem : MonoBehaviour
             GameObject.Find("refresh_text").GetComponent<TextMeshProUGUI>().color = Color.red;
             Debug.Log("Glasses Not Connected");
         }
-        lastSelectedButton = gestureButtons[gestureIndex];
+        lastSelectedButton = gestureButtons[selectedGestureIndex];
     }
-
-
-    public void toggleDeviceButton()
+    public void ToggleDeviceButton()
     {
-        if (recordingDevice == "Camera") {
-            recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Glasses";
-            recordingDevice = "Glasses";
-            recSaveAtBtn.gameObject.SetActive(true);
-        } else if (recordingDevice == "Glasses") {
-            recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Camera";
-            recordingDevice = "Camera";
-            recSaveAtBtn.gameObject.SetActive(false);
-        } else {
-            recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Camera";
-            recordingDevice = "Camera";
-            recSaveAtBtn.gameObject.SetActive(false);
-        }
-        lastSelectedButton = gestureButtons[gestureIndex];
+        recDeviceBtn.GetComponentInChildren<TextMeshProUGUI>().text = recordingDevice == "Camera" ? "Glasses" : "Camera";
+        recordingDevice = recordingDevice == "Camera" ? "Glasses" : "Camera";
+        recSaveAtBtn.gameObject.SetActive(recordingDevice == "Glasses");
+        lastSelectedButton = gestureButtons[selectedGestureIndex];
     }
-
-    public void toggleSaveAt() 
+    public void ToggleSaveAt() 
     {
-        if (saveAt == "Phone") {
-            recSaveAtBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Local";
-            saveAt = "Local";
-        } else if (recordingDevice == "Local") {
-            recSaveAtBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Phone";
-            saveAt = "Phone";
-        } else {
-            recSaveAtBtn.GetComponentInChildren<TextMeshProUGUI>().text = "Phone";
-            saveAt = "Phone";
+        recSaveAtBtn.GetComponentInChildren<TextMeshProUGUI>().text = saveAt == "Phone" ? "Local" : "Phone";
+        saveAt = saveAt == "Phone" ? "Local" : "Phone";
+        lastSelectedButton = gestureButtons[selectedGestureIndex];
+    }
+    public void PrevGest()
+    {
+        if (selectedGestureIndex > 0)
+        {
+            selectedGestureIndex--;
+            UpdateDescText();
+            PlayGestureVideo();
         }
-        lastSelectedButton = gestureButtons[gestureIndex];
+        Debug.Log("Prev Pressed");
+        gestureButtons[selectedGestureIndex].Select();
+        lastSelectedButton = gestureButtons[selectedGestureIndex];
+    }
+    public void NextGest()
+    {
+        if (selectedGestureIndex < 4)
+        {
+            selectedGestureIndex++;
+            UpdateDescText();
+            PlayGestureVideo();
+        }
+        Debug.Log("Next Pressed");
+        gestureButtons[selectedGestureIndex].Select();
+        lastSelectedButton = gestureButtons[selectedGestureIndex];
+    }
+    public void OnDateToggleValueChanged(bool value)
+    {
+        isDateOn = value;
+    }
+    public void OnInputFilenameChanged(string input)
+    {
+        string sanitizedInput = Regex.Replace(input, @"[^a-zA-Z0-9_\-]", ""); // Remove special characters except '_' and '-'
+        if (sanitizedInput.Length > maxFileNameLength)
+        {
+            sanitizedInput = sanitizedInput.Substring(0, maxFileNameLength);
+        }
+        validatedFileName = sanitizedInput;
+        if (input != sanitizedInput)
+        {
+            inputFieldFilename.text = sanitizedInput; // Reflect sanitized input
+        }
+    }
+    public void ExitButton()
+    {
+        Application.Quit();
+        Debug.Log("Application is exiting");
+        UnityEditor.EditorApplication.isPlaying = false;
+    }
+    // Button Functions [END]===============================
+
+    void Update()
+    {
+        if (!inputFieldFilename.isFocused && Input.GetKeyDown(KeyCode.Space))
+        {
+            LoadRecording();
+        }
+        if (EventSystem.current.currentSelectedGameObject == null)
+        {
+            if (lastSelectedButton != null)
+            {
+                lastSelectedButton.Select();
+            }
+        }
     }
 }

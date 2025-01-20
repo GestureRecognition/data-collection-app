@@ -11,5 +11,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Recording.unity
     guid: 9d57bd16fd74dcf4e9e92d1a437e061b
+  - enabled: 1
+    path: Assets/Scenes/Record2.unity
+    guid: 153e15f9926bb3e4dba67e48e9dfd0a5
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0
