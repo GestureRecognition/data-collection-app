@@ -1,5 +1,3 @@
-# Ganzin Glasses Streaming and Recording System
-
 ## Installation Guide
 
 ### Step 1: Install Dependencies
