@@ -16,15 +16,18 @@
    - The Ganzin SDK is required to interact with Ganzin glasses.
    - Download the following files (Confidential):
      - `ganzin_sol_sdk-1.0.1-py3-none-any.whl`
-     - `examples.zip`
-   - Install the SDK: 1. Extract the SDK files to a directory. 2. Open PowerShell in the SDK directory. 3. Run the following command:
+      > **Note:** Please ask the repository maintainer for the Sol SDK installation files since they are confidential.
+   - Install the SDK: 
+     - Extract the SDK files to a directory.
+     - Open PowerShell in the SDK directory.
+     - Run the following command:
      `bash
    pip install .\ganzin_sol_sdk-1.0.1-py3-none-any.whl
-   ` 4. Install other packages that will be used later:
+      `
+     - Install other packages that will be used later:
      `bash
    pip install requests
    `
-     > **Note:** Please ask the repository maintainer for the Sol SDK installation files since they are confidential.
 
 ---
 
@@ -64,5 +67,5 @@
 ---
 
 ## Additional Notes
-
+- Results of the recording can be found here `Assets\PythonServer\recordings`.
 - For further assistance, contact the repository maintainer.
