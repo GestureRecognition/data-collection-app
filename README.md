@@ -67,5 +67,7 @@
 ---
 
 ## Additional Notes
-- Results of the recording can be found here `Assets\PythonServer\recordings`.
+- Results of the recording can be found here: `Assets\PythonServer\recordings`.
+- The recording queue is stored locally here: `Assets\trialPreview\QueueData.json`.
+- Maximum filename length: 50 characters.
 - For further assistance, contact the repository maintainer.
